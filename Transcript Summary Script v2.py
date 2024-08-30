@@ -27,9 +27,9 @@ def summarize_content(content, progress_var, root):
         root.update_idletasks()
         
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Use the desired model (e.g., "gpt-4")
+            model="gpt-4o",  # Use the desired model (e.g., "gpt-4")
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that summarizes meeting transcripts in a Minutes of the Meeting format in a concise and detailed manner, complete with sections for attendees, agenda, summaries of individual points, conclusions, and action items."},
+                {"role": "system", "content": "You are a helpful assistant that summarizes meeting transcripts in a Minutes of the Meeting format in a concise and detailed manner, complete with sections for attendees, agenda, summaries of individual agenda points (with headings), conclusions, and action items."},
                 {"role": "user", "content": f"Please summarize the following meeting transcript:\n\n{content}"}
             ],
             max_tokens=2500,  # Adjust tokens based on the length of summary required
