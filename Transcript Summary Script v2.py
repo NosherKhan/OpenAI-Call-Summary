@@ -64,7 +64,8 @@ def save_summary(summary, original_file_path):
     if save_path:
         with open(save_path, 'w') as file:
             file.write(summary)
-        messagebox.showinfo("Success", f"Summary saved successfully at {save_path}")
+        # messagebox.showinfo("Success", f"Summary saved successfully at {save_path}")
+        messagebox.showinfo("Success", f"Summary file saved successfully!")
 
 # Function to handle the summarization process in a separate thread
 def handle_summarization(content, file_path, progress_var, root, progress_window):
