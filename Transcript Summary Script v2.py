@@ -22,8 +22,8 @@ def select_file():
 # Function to summarize the content using OpenAI
 def summarize_content(content, progress_var, root):
     try:
-        # Update progress bar (set to 20% initially)
-        progress_var.set(20)
+        # Update progress bar (set to 25% initially)
+        progress_var.set(25)
         root.update_idletasks()
         
         response = openai.ChatCompletion.create(
@@ -32,14 +32,14 @@ def summarize_content(content, progress_var, root):
                 {"role": "system", "content": "You are a helpful assistant that summarizes meeting transcripts in a Minutes of the Meeting format in a concise and detailed manner, complete with sections for attendees, agenda, summaries of individual points, conclusions, and action items."},
                 {"role": "user", "content": f"Please summarize the following meeting transcript:\n\n{content}"}
             ],
-            max_tokens=500,  # Adjust tokens based on the length of summary required
+            max_tokens=2500,  # Adjust tokens based on the length of summary required
             n=1,
             stop=None,
             temperature=0.5
         )
         
-        # Update progress bar (set to 80% during processing)
-        progress_var.set(80)
+        # Update progress bar (set to 85% during processing)
+        progress_var.set(85)
         root.update_idletasks()
         
         summary = response.choices[0].message['content']
