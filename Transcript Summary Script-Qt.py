@@ -120,7 +120,7 @@ class SummarizationThread(QThread):
                 {"role": "user", "content": f"Please summarize the following meeting transcript:\n\n{self.content}"}
                 ],
                 
-                max_tokens=2500,  # Adjust tokens based on the length of summary required
+                max_tokens=5000,  # Adjust tokens based on the length of summary required
                 n=1,
                 stop=None,
                 temperature=0.5
