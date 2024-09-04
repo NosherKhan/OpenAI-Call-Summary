@@ -1,4 +1,4 @@
-import sys          # Import sys for command-line arguments and exiting the program
+import sys
 import os
 import openai
 from cryptography.fernet import Fernet
@@ -8,12 +8,14 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 # Path to store the encrypted API key
 KEY_FILE = "api_key.key"
+ENCRYPTED_KEY_FILE = "encrypted_api_key.bin"
 
 def generate_key():
     return Fernet.generate_key()
 
 def load_key():
-    return open(KEY_FILE, "rb").read()
+    with open(KEY_FILE, "rb") as key_file:
+        return key_file.read()
 
 def save_key(key):
     with open(KEY_FILE, "wb") as key_file:
@@ -22,26 +24,32 @@ def save_key(key):
 def encrypt_api_key(key, api_key):
     cipher_suite = Fernet(key)
     ciphered_text = cipher_suite.encrypt(api_key.encode())
-    with open("encrypted_api_key.bin", "wb") as file:
+    with open(ENCRYPTED_KEY_FILE, "wb") as file:
         file.write(ciphered_text)
 
 def decrypt_api_key(key):
     cipher_suite = Fernet(key)
-    with open("encrypted_api_key.bin", "rb") as file:
+    with open(ENCRYPTED_KEY_FILE, "rb") as file:
         ciphered_text = file.read()
     return cipher_suite.decrypt(ciphered_text).decode()
 
 def get_api_key():
-    if os.path.exists(KEY_FILE):
+    if os.path.exists(KEY_FILE) and os.path.exists(ENCRYPTED_KEY_FILE):
         key = load_key()
-        api_key = decrypt_api_key(key)
+        return decrypt_api_key(key)
     else:
-        api_key, ok = QInputDialog.getText(None, "API Key", "Enter your OpenAI API key:")
-        if ok:
-            key = generate_key()
-            save_key(key)
-            encrypt_api_key(key, api_key)
-    return api_key
+        return prompt_for_api_key()
+
+def prompt_for_api_key():
+    api_key, ok = QInputDialog.getText(None, "API Key", "Enter your OpenAI API key:")
+    if ok:
+        key = generate_key()
+        save_key(key)
+        encrypt_api_key(key, api_key)
+        return api_key
+    else:
+        QMessageBox.critical(None, "Error", "API key is required to proceed.")
+        sys.exit(1)
 
 class SummarizerApp(QWidget):
     def __init__(self):
@@ -72,11 +80,11 @@ class SummarizerApp(QWidget):
         if file_path:
             with open(file_path, 'r') as file:
                 content = file.read()
-
             self.start_summarization(content, file_path)
 
     def start_summarization(self, content, file_path):
         self.label.setText("Summarizing file...")
+        self.btnSelectFile.setEnabled(False)  # Disable button to prevent multiple submissions
         self.thread = SummarizationThread(content, file_path)
         self.thread.progress.connect(self.update_progress)
         self.thread.completed.connect(self.save_summary)
@@ -96,6 +104,7 @@ class SummarizerApp(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to summarize the content: {file_path}")
 
         self.progressBar.setValue(0)  # Reset progress bar after completion
+        self.btnSelectFile.setEnabled(True)  # Re-enable the file selection button
 
 class SummarizationThread(QThread):
     progress = pyqtSignal(int)
@@ -108,16 +117,15 @@ class SummarizationThread(QThread):
 
     def run(self):
         try:
-            self.progress.emit(25)
-
-            # Use the decrypted API key
+            self.update_status(25, "Connecting to OpenAI API...")
             openai.api_key = get_api_key()
 
+            self.update_status(50, "Processing response...")
             response = openai.ChatCompletion.create(
                 model="gpt-4o",  # Use the desired model (e.g., "gpt-4")
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that summarizes meeting transcripts in a Minutes of the Meeting format in a concise and detailed manner, complete with sections for attendees, agenda, summaries of individual agenda points (with headings), conclusions, and action items."},
-                {"role": "user", "content": f"Please summarize the following meeting transcript:\n\n{self.content}"}
+                    {"role": "user", "content": f"Please summarize the following meeting transcript:\n\n{self.content}"}
                 ],
                 
                 max_tokens=5000,  # Adjust tokens based on the length of summary required
@@ -126,15 +134,14 @@ class SummarizationThread(QThread):
                 temperature=0.5
             )
 
-            self.progress.emit(85)
-
             summary = response.choices[0].message['content']
-
-            self.progress.emit(100)
-
+            self.update_status(100, "Summary completed.")
             self.completed.emit(summary, self.file_path)
         except Exception as e:
             self.completed.emit(None, str(e))
+
+    def update_status(self, progress, status_message):
+        self.progress.emit(progress)
 
 def main():
     app = QApplication(sys.argv)
@@ -144,6 +151,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 """ 
 
