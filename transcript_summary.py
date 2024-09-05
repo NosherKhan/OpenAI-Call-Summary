@@ -5,6 +5,7 @@ from cryptography.fernet import Fernet
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel, QProgressBar,
                              QPushButton, QFileDialog, QMessageBox, QInputDialog, QMenuBar, QAction)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QColor
 
 # Path to store the encrypted API key
 KEY_FILE = "api_key.key"
@@ -14,7 +15,7 @@ ENCRYPTED_KEY_FILE = "encrypted_api_key.bin"
 MODELS = {
     "gpt-3.5-turbo": 4096,
     "gpt-4": 8192,
-    "gpt-4o": 32000  # Hypothetical token limit for gpt-4o (example)
+    "gpt-4o": 32000  # Hypothetical token limit for GPT-4o (example)
 }
 
 DEFAULT_MODEL = "gpt-3.5-turbo"
@@ -49,13 +50,12 @@ def decrypt_api_key(key):
         ciphered_text = file.read()
     return cipher_suite.decrypt(ciphered_text).decode()
 
-# Function to get the API key, prompting the user if necessary
-def get_api_key():
+# Function to get the API key without prompting the user
+def get_stored_api_key():
     key = load_key()
     if key and os.path.exists(ENCRYPTED_KEY_FILE):
         return decrypt_api_key(key)
-    else:
-        return prompt_for_api_key()
+    return None
 
 # Function to prompt the user to enter the API key
 def prompt_for_api_key():
@@ -66,7 +66,6 @@ def prompt_for_api_key():
         encrypt_api_key(key, api_key)
         return api_key
     else:
-        QMessageBox.critical(None, "Error", "API key is required to proceed.")
         return None
 
 # Function to delete the stored API key
@@ -93,29 +92,34 @@ def select_model(token_count):
 class SummarizerApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.api_key = get_api_key()
+        self.api_key = get_stored_api_key()  # Check if API key is stored
         self.gpt_model = DEFAULT_MODEL  # Default GPT model
-        if self.api_key:
-            self.initUI()
+        self.initUI()
 
     # Initialize the user interface
     def initUI(self):
-        self.setWindowTitle("Transcript Summarizer")
+        self.setWindowTitle("OpenAI Transcript Summarizer")
         self.setGeometry(100, 100, 400, 300)
 
         layout = QVBoxLayout()
 
+        # API Key Status Label
+        self.api_status_label = QLabel()
+        layout.addWidget(self.api_status_label)
+
+        # API Key Button
+        self.api_key_button = QPushButton("Enter API Key", self)
+        self.api_key_button.clicked.connect(self.reenter_api_key)
+        layout.addWidget(self.api_key_button)
+
+        # Set initial API key status
+        self.update_api_status()
+
         # Menu Bar
         self.menu_bar = QMenuBar(self)
-
-        # API key management menu
         api_menu = self.menu_bar.addMenu("API Key")
-        enter_api_action = QAction("Re-enter API Key", self)
-        enter_api_action.triggered.connect(self.reenter_api_key)
-        api_menu.addAction(enter_api_action)
-
-        delete_api_action = QAction("Delete API Key", self)
-        delete_api_action.triggered.connect(delete_api_key)
+        delete_api_action = QAction("Delete", self)
+        delete_api_action.triggered.connect(self.delete_and_update_api_key)
         api_menu.addAction(delete_api_action)
 
         # GPT model selection menu
@@ -147,26 +151,48 @@ class SummarizerApp(QWidget):
 
         self.update_model_menu()
 
-    # Function to update the model menu with a checkmark for the selected model
-    def update_model_menu(self):
-        for action in self.model_menu.actions():
-            action.setChecked(action.text() == self.gpt_model)
+    # Update the API key status label and button state
+    def update_api_status(self):
+        if self.api_key:
+            self.api_status_label.setText("API Key: Entered")
+            self.api_status_label.setStyleSheet("color: green;")
+            self.api_key_button.setEnabled(False)  # Disable if API key is already entered
+        else:
+            self.api_status_label.setText("API Key: Please enter key")
+            self.api_status_label.setStyleSheet("color: red;")
+            self.api_key_button.setEnabled(True)
 
     # Function to re-enter the API key
     def reenter_api_key(self):
         self.api_key = prompt_for_api_key()
         if self.api_key:
-            QMessageBox.information(self, "Success", "API key updated successfully.")
+            QMessageBox.information(self, "Success", "API key entered successfully.")
+        self.update_api_status()
+
+    # Function to delete the API key and update the status
+    def delete_and_update_api_key(self):
+        delete_api_key()
+        self.api_key = None
+        self.update_api_status()
 
     # Function to set the GPT model
     def set_model(self, model_name):
         self.gpt_model = model_name
         self.model_label.setText(f"Selected Model: {model_name}")
         self.update_model_menu()
-        QMessageBox.information(self, "Model Selection", f"GPT model set to {model_name}")
+
+    # Function to update the model menu with a checkmark for the selected model
+    def update_model_menu(self):
+        for action in self.model_menu.actions():
+            action.setChecked(action.text() == self.gpt_model)
 
     # Function to select a file and estimate tokens
     def select_file(self):
+        if not self.api_key:  # Prompt for API key if not entered
+            self.reenter_api_key()
+            if not self.api_key:  # If API key is still not entered, stop the process
+                return
+
         file_path, _ = QFileDialog.getOpenFileName(self, "Select a Text File", "", "Text Files (*.txt);;All Files (*)")
         if file_path:
             with open(file_path, 'r') as file:
@@ -217,14 +243,14 @@ class SummarizationThread(QThread):
     def run(self):
         try:
             self.progress.emit(25)
-            openai.api_key = get_api_key()
+            openai.api_key = get_stored_api_key()
             response = openai.ChatCompletion.create(
                 model=self.gpt_model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that summarizes meeting transcripts in a Minutes of the Meeting format in a concise and detailed manner, complete with sections for attendees, agenda, summaries of individual agenda points (with headings), conclusions, and action items."},  # The prompt passed to OpenAI
                     {"role": "user", "content": f"Please summarize the following meeting transcript:\n\n{self.content}"}
                 ],
-                max_tokens=500,  # Adjust tokens based on the length of summary required
+                max_tokens=500,
                 n=1,
                 stop=None,
                 temperature=0.5
@@ -240,14 +266,11 @@ class SummarizationThread(QThread):
 def main():
     app = QApplication(sys.argv)
     ex = SummarizerApp()
-    if ex.api_key:  # Only show UI if API key is set
-        ex.show()
+    ex.show()
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
     main()
-
-
 
 """ 
 
@@ -274,72 +297,78 @@ Explanation of the Modified Script:
 
        
 Encryption and Decryption:
-
-    The script uses the cryptography library to securely encrypt and decrypt the API key.
-    If the key file exists, the API key is retrieved and decrypted.
-    If the key file doesn’t exist, the user is prompted to enter their API key, which is then encrypted and saved.
+    - The script uses the cryptography library to securely encrypt and decrypt the API key.
+    - If the key file exists, the API key is retrieved and decrypted.
+    - If the key file doesn’t exist, the user is prompted to enter their API key, which is then encrypted and saved.
 
 Persistent Storage:
-
-    The API key is stored in an encrypted format in a file, making it more secure than plain text.
+    - The API key is stored in an encrypted format in a file, making it more secure than plain text.
 
 < 2024.09.04 >
 
 Enhanced get_api_key and prompt_for_api_key:
-
-    Centralized logic for handling API key retrieval and prompting the user if the key is not already stored.
+    - Centralized logic for handling API key retrieval and prompting the user if the key is not already stored.
 
 UI Improvements:
-
-    Disabled the file selection button during processing to prevent multiple submissions.
-    Enhanced status messages in the SummarizationThread to provide more detailed feedback to the user.
+    - Disabled the file selection button during processing to prevent multiple submissions.
+    - Enhanced status messages in the SummarizationThread to provide more detailed feedback to the user.
 
 Error Handling:
-
-    Added error handling in the case where the user does not provide an API key.
+    - Added error handling in the case where the user does not provide an API key.
 
 Modularity:
-
-    Further broke down functions for better readability and maintainability.
+    - Further broke down functions for better readability and maintainability.
 
 < 2024.09.05 >
 
 API Key Management:
-
-    Re-enter API Key: Option in the "API Key" menu to re-enter the OpenAI API key.
-    Delete API Key: Option in the "API Key" menu to delete the stored API key.
+    - Re-enter API Key: Option in the "API Key" menu to re-enter the OpenAI API key.
+    - Delete API Key: Option in the "API Key" menu to delete the stored API key.
 
 Model Selection:
-
-    Select GPT Model: Option in the "Model" menu to choose between different GPT models (gpt-3.5-turbo, gpt-4, etc.).
+    - Select GPT Model: Option in the "Model" menu to choose between different GPT models (gpt-3.5-turbo, gpt-4, etc.).
 
 Improved Flow:
-
-    The application no longer quits after entering the API key.
-    API key prompts are handled correctly
+    - The application no longer quits after entering the API key.
+    - API key prompts are handled correctly
 
 Quitting After API Key Input: 
-    The app was quitting because of the sys.exit(1) call in the prompt_for_api_key() function. Now, it returns None instead of exiting the app, allowing it to continue and let the user enter a valid key later if needed.
+    - The app was quitting because of the sys.exit(1) call in the prompt_for_api_key() function. Now, it returns None instead of exiting the app, allowing it to continue and let the user enter a valid key later if needed.
 
 File Existence Check for Encryption Key: 
-    I added a check for KEY_FILE existence in load_key(). If the file doesn’t exist, the app won’t attempt to load it and will instead prompt for the key.
+    - I added a check for KEY_FILE existence in load_key(). If the file doesn’t exist, the app won’t attempt to load it and will instead prompt for the key.
 
 Corrected File Path Handling: 
-    If no file is selected, the program won’t crash. It now gracefully handles file operations.
+    - If no file is selected, the program won’t crash. It now gracefully handles file operations.
 
 API Key Management: 
-    You can now delete and re-enter the API key from the menu.
+    - You can now delete and re-enter the API key from the menu.
 
 General Bug Fixes: 
-    Fixed various minor issues in the previous logic, including path handling and error handling.
+    - Fixed various minor issues in the previous logic, including path handling and error handling.
 
 Analyze the File: 
-    Read the file, calculate the number of tokens, and select an appropriate model.
+    - Read the file, calculate the number of tokens, and select an appropriate model.
 
 Model Selection Logic: 
-    Use available models (e.g., gpt-3.5-turbo, gpt-4, gpt-4o, etc.) based on the number of tokens required. GPT models have token limits (e.g., 4096 for gpt-3.5-turbo and up to 32k for gpt-4o).
+    - Use available models (e.g., gpt-3.5-turbo, gpt-4, gpt-4o, etc.) based on the number of tokens required. GPT models have token limits (e.g., 4096 for gpt-3.5-turbo and up to 32k for gpt-4o).
 
 Show Selected Model: 
-    Display the selected model on the screen and add a checkmark in the menu to indicate the chosen model.
+    - Display the selected model on the screen and add a checkmark in the menu to indicate the chosen model.
+
+API Key Status:
+    - If an API key is stored, the label shows API Key: Entered in green.
+    - If no API key is stored, the label shows API Key: Please enter key in red.
+
+API Key Button:
+    - If an API key is already stored, the button to enter the API key is disabled.
+    - If no API key is stored, the button allows the user to open the API key input dialog.
+
+Prompting for API Key on File Selection:
+    - When the user selects a file, the app checks if an API key is stored. If not, the user is prompted to enter the API key.
+    - If the user cancels entering the API key, the file processing is halted, but the application continues running.
+
+Re-entering and Deleting API Key:
+    - Users can re-enter or delete the API key from the main window.
 
  """
