@@ -15,14 +15,18 @@ ENCRYPTED_KEY_FILE = "encrypted_api_key.bin"
 MODELS = {
     "gpt-3.5-turbo": 4096,
     "gpt-4": 8192,
+    "gpt-4o-mini": 16384,
     "gpt-4o": 32000  # Hypothetical token limit for GPT-4o (example)
 }
 
-DEFAULT_MODEL = "gpt-3.5-turbo"
+DEFAULT_MODEL = "gpt-4o-mini"
 
-# Function to generate a new encryption key
+# Function to generate a new encryption key and save it
 def generate_key():
-    return Fernet.generate_key()
+    key = Fernet.generate_key()
+    with open(KEY_FILE, "wb") as key_file:
+        key_file.write(key)
+    return key
 
 # Function to load the encryption key
 def load_key():
@@ -158,7 +162,7 @@ class SummarizerApp(QWidget):
             self.api_status_label.setStyleSheet("color: green;")
             self.api_key_button.setEnabled(False)  # Disable if API key is already entered
         else:
-            self.api_status_label.setText("API Key: Please enter key")
+            self.api_status_label.setText("API Key: Not Entered")
             self.api_status_label.setStyleSheet("color: red;")
             self.api_key_button.setEnabled(True)
 
