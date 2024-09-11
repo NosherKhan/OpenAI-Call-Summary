@@ -2,9 +2,10 @@ import sys
 import os
 import openai
 from cryptography.fernet import Fernet
-from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox, QInputDialog
+from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox, QInputDialog, QTextEdit
 from PyQt5 import uic
 from PyQt5.QtCore import QThread, pyqtSignal
+import fitz  # PyMuPDF
 
 # Path to store the encrypted API key
 KEY_FILE = "api_key.key"
@@ -28,9 +29,12 @@ def generate_key():
 
 # Function to load the encryption key
 def load_key():
-    if os.path.exists(KEY_FILE):
-        with open(KEY_FILE, "rb") as key_file:
-            return key_file.read()
+    try:
+        if os.path.exists(KEY_FILE):
+            with open(KEY_FILE, "rb") as key_file:
+                return key_file.read()
+    except Exception as e:
+        print(f"Error loading key: {e}")
     return None
 
 # Function to save the encryption key
@@ -88,6 +92,10 @@ class SummarizerApp(QMainWindow):
         uic.loadUi("./gui/main_window.ui", self)  # Load the .ui file from the gui folder
         self.api_key = get_stored_api_key()  # Check if API key is stored
         self.gpt_model = DEFAULT_MODEL  # Default GPT model
+        self.transcriptContent = self.findChild(QTextEdit, 'transcriptContent') # Ensure 'transcriptContent' is properly initialized
+        # if self.transcriptContent is None:
+        #     raise ValueError("transcriptContent is not initialized.")
+        self.transcriptContent = QTextEdit()  # Initialize the text edit
         
         # Connect buttons and initialize UI
         self.api_key_button.clicked.connect(self.reenter_api_key)
@@ -120,15 +128,46 @@ class SummarizerApp(QMainWindow):
                 return
 
         options = QFileDialog.Options()
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select a Text File", "", "Text Files (*.txt);;All Files (*)", options=options)
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select a Text File", "", "All Supported Files (*.txt *.pdf);;All Files (*)", options=options)
         if file_path:
+            if file_path.endswith('.pdf'):
+                self.transcriptContent.setPlainText(self.extract_from_pdf(file_path))
+            else:
+                self.process_file(file_path)
+
+    # Function to process the selected file
+    def process_file(self, file_path):
+        try:
             with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
+                    content = file.read()
+        except UnicodeDecodeError:
+            reply = QMessageBox.question(self, "Unicode Error", "The file contains invalid characters. Do you want to skip invalid characters and continue?", QMessageBox.OK | QMessageBox.Cancel)
+            if reply == QMessageBox.OK:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+                    content = file.read()
+            else:
+                return
+            self.transcriptContent.setPlainText(content)
             # Token counting and model selection logic goes here
             self.start_summarization(content, file_path)
 
+    # Function to extract text from a PDF file
+    def extract_from_pdf(self, file_path):
+        text = ""
+        try:
+            with fitz.open(file_path) as doc:
+                for page in doc:
+                    text += page.get_text()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to extract text from PDF: {str(e)}")
+        return text
+    
     # Function to start the summarization process
     def start_summarization(self, content, file_path):
+        content = self.transcriptContent.toPlainText() # Get the content from the text edit
+        if not content:
+            QMessageBox.warning(self, "Warning", "No content to summarize.")
+            return
         self.btnSelectFile.setEnabled(False)  # Disable button to prevent multiple submissions
         self.thread = SummarizationThread(content, file_path, self.gpt_model)
         self.thread.progress.connect(self.update_progress)
