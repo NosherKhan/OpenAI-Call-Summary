@@ -140,15 +140,22 @@ class SummarizerApp(QMainWindow):
         self.progressBar.setValue(value)
 
     # Function to save the summary
-    def save_summary(self, summary, file_path):
-        if summary:
-            save_path, _ = QFileDialog.getSaveFileName(self, "Save Summary As", f"Summary_{os.path.basename(file_path)}", "Text Files (*.txt);;All Files (*)")
-            if save_path:
-                with open(save_path, 'w', encoding='utf-8') as file:
-                    file.write(summary)
-                QMessageBox.information(self, "Success", f"Summary saved successfully.")
+def save_summary(self, summary, file_path):
+    if summary:
+        save_path, _ = QFileDialog.getSaveFileName(self, "Save Summary As", f"Summary_{os.path.basename(file_path)}", "Text Files (*.txt);;All Files (*)")
+        if save_path:
+            with open(save_path, 'w', encoding='utf-8') as file:
+                file.write(summary)
+            QMessageBox.information(self, "Success", f"Summary saved successfully.")
+            
+            # Save the file with .md extension silently
+            md_save_path = os.path.splitext(save_path)[0] + ".md"
+            with open(md_save_path, 'w', encoding='utf-8') as md_file:
+                md_file.write(summary)
         else:
             QMessageBox.critical(self, "Error", f"Failed to summarize the content: {file_path}")
+    else:
+        QMessageBox.critical(self, "Error", f"Failed to summarize the content: {file_path}")
         self.progressBar.setValue(0)  # Reset progress bar
         self.btnSelectFile.setEnabled(True)  # Re-enable the file selection button
 
