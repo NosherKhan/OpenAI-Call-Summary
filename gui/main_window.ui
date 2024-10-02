@@ -68,7 +68,7 @@
        </font>
       </property>
       <property name="text">
-       <string>Selected Model: gpt-4o-mini</string>
+       <string>Select or drag-drop your file for conversion using GPT-4o-mini</string>
       </property>
       <property name="alignment">
        <set>Qt::AlignCenter</set>

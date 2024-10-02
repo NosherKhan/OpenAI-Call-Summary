@@ -4,7 +4,9 @@ import openai
 from cryptography.fernet import Fernet
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox, QInputDialog
 from PyQt5 import uic
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QDragEnterEvent, QDropEvent
+
 
 # Path to store the encrypted API key
 KEY_FILE = "api_key.key"
@@ -93,6 +95,25 @@ class SummarizerApp(QMainWindow):
         self.api_key_button.clicked.connect(self.reenter_api_key)
         self.btnSelectFile.clicked.connect(self.select_file)
         self.update_api_status()
+
+        # Enable drag and drop functionality
+        self.setAcceptDrops(True)
+
+    # Function to handle drag and drop events
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    # Function to handle drop events
+    def dropEvent(self, event: QDropEvent):
+        for url in event.mimeData().urls():
+            file_path = url.toLocalFile()
+            if file_path.endswith(".txt") or file_path.endswith(".pdf") and os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    content = file.read()
+                self.start_summarization(content, file_path)
+                break
+
 
     # Update the API key status label and button state
     def update_api_status(self):
